@@ -99,6 +99,30 @@ commented example. Key points:
   value: 'Basic {{ printf "%s:%s" (secret "op://v/u/username") (secret "op://v/u/password") | base64 }}'
   ```
 
+### Hot reload
+
+token-proxy watches the config file and **applies changes without a restart**.
+Edit `token-proxy.yaml` and save — added/changed/removed rules, header
+templates, and `cache.ttl` take effect within `--reload-interval` (default 1s).
+You can also force a reload at any time with `SIGHUP`:
+
+```sh
+kill -HUP "$(pgrep -f 'token-proxy serve')"
+```
+
+- A reload that fails to parse or validate is **logged and ignored**; the
+  running config keeps serving, so a typo never takes the proxy down.
+- The secret cache is **preserved** across reloads (no extra secret-manager
+  calls just because you edited a rule).
+- For a kept-alive intercepted connection, the new rules apply from its next
+  request. A connection already opened as a blind tunnel (no matching rule)
+  stays a tunnel until it closes.
+- `listen` and `ca.dir` are fixed for the process; changing them is logged with
+  a note that a restart is required.
+
+Flags: `--watch` (default on; set `--watch=false` to disable file polling —
+`SIGHUP` still works) and `--reload-interval` (default `1s`).
+
 ### Secret sources
 
 Secret sources are selected by the reference scheme and are pluggable
@@ -154,6 +178,7 @@ secret manager, with a valid-looking certificate.**
 | Secrets kept **out of config & logs** | ✅ Referenced by URI, resolved at runtime, never logged | ❌ Typically pasted into rules | ❌ Typically in scripts | ❌ Up to your script |
 | In-memory cache w/ version-aware revalidation to cut secret-manager billing | ✅ | ❌ | ❌ | ❌ |
 | Refuses non-loopback bind without an explicit flag | ✅ | ❌ | ❌ | ❌ (bind is freely configurable) |
+| Hot-reload of rules (file watch + SIGHUP, no restart) | ✅ | ⚙️ GUI edits apply live | ⚙️ GUI edits apply live | ⚙️ Edit script + reload |
 | Selective MITM (only configured hosts decrypted, rest tunnelled) | ✅ By design | ⚙️ Configurable | ⚙️ Configurable | ⚙️ Configurable |
 | Footprint | Single static Go binary, headless | Large GUI (JVM) | GUI app | Python, CLI/TUI + scriptable |
 | Best for | Letting AI agents / scripts call authed APIs safely | Pentesting | Traffic inspection | General HTTPS debugging & scripting |

@@ -143,6 +143,29 @@ func TestResolveRefetchesWhenVersionUnsupported(t *testing.T) {
 	}
 }
 
+func TestSetTTLTakesEffect(t *testing.T) {
+	src := &fakeSource{scheme: "t", value: "v", version: "1"}
+	r := NewResolver(time.Minute)
+	r.Register(src)
+	cur := time.Now()
+	r.now = func() time.Time { return cur }
+
+	if _, err := r.Resolve(context.Background(), "t://x"); err != nil {
+		t.Fatal(err)
+	}
+	cur = cur.Add(2 * time.Minute) // beyond the original 1m TTL
+
+	// Shrinking would force revalidation; instead grow the TTL so the entry is
+	// still considered fresh and no source call happens.
+	r.SetTTL(10 * time.Minute)
+	if _, err := r.Resolve(context.Background(), "t://x"); err != nil {
+		t.Fatal(err)
+	}
+	if f, v := src.counts(); f != 1 || v != 0 {
+		t.Fatalf("after raising TTL want 1 fetch / 0 version checks, got %d / %d", f, v)
+	}
+}
+
 func TestResolveUnknownScheme(t *testing.T) {
 	r := NewResolver(time.Minute)
 	if _, err := r.Resolve(context.Background(), "nope://x"); err == nil {

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -63,6 +64,8 @@ func runServe(args []string) error {
 	caDir := fs.String("ca-dir", "", "override CA directory")
 	allowPublic := fs.Bool("allow-public", false, "permit binding to a non-loopback address (UNSAFE: exposes injected credentials to your network)")
 	verbose := fs.Bool("verbose", false, "enable debug logging")
+	watch := fs.Bool("watch", true, "hot-reload the config file when it changes (SIGHUP always reloads)")
+	reloadInterval := fs.Duration("reload-interval", time.Second, "how often to check the config file for changes when --watch is set")
 	fs.Parse(args)
 
 	level := slog.LevelInfo
@@ -75,6 +78,9 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Baseline (file) values for detecting non-reloadable changes later; the
+	// running listen/CA address may be overridden by flags below.
+	baseline := &config.Config{Listen: cfg.Listen, CA: config.CA{Dir: cfg.CA.Dir}}
 	if *listen != "" {
 		cfg.Listen = *listen
 	}
@@ -121,12 +127,42 @@ func runServe(args []string) error {
 		log.Warn("bound to a NON-loopback address; injected credentials are reachable from your network")
 	}
 
+	// reload re-reads the config file and atomically applies the rules and
+	// cache settings. A bad config is logged and the running config is kept.
+	reload := func() {
+		newCfg, err := config.Load(*configPath)
+		if err != nil {
+			log.Error("config reload failed; keeping current config", "err", err)
+			return
+		}
+		if changes := config.NonReloadableChanges(baseline, newCfg); len(changes) > 0 {
+			log.Warn("config change needs a restart to take effect",
+				"fields", strings.Join(changes, "; "))
+		}
+		if err := handler.Reload(newCfg); err != nil {
+			log.Error("config reload failed; keeping current config", "err", err)
+			return
+		}
+		resolver.SetTTL(newCfg.Cache.TTL.Or(5 * time.Minute))
+		baseline = &config.Config{Listen: newCfg.Listen, CA: config.CA{Dir: newCfg.CA.Dir}}
+		log.Info("config reloaded", "path", *configPath, "rules", len(newCfg.Rules))
+	}
+
+	watchCtx, stopWatch := context.WithCancel(context.Background())
+	defer stopWatch()
+	interval := time.Duration(0)
+	if *watch {
+		interval = *reloadInterval
+	}
+	go watchConfig(watchCtx, log, *configPath, interval, reload)
+
 	idleClosed := make(chan struct{})
 	go func() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 		<-sig
 		log.Info("shutting down")
+		stopWatch()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		srv.Shutdown(ctx)
@@ -138,6 +174,48 @@ func runServe(args []string) error {
 	}
 	<-idleClosed
 	return nil
+}
+
+// watchConfig reloads the config on SIGHUP and, when interval > 0, whenever the
+// config file's modification time changes.
+func watchConfig(ctx context.Context, log *slog.Logger, path string, interval time.Duration, reload func()) {
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
+
+	var tick <-chan time.Time
+	if interval > 0 {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		tick = t.C
+	}
+	last := fileModTime(path)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-hup:
+			log.Info("SIGHUP received, reloading config")
+			reload()
+		case <-tick:
+			m := fileModTime(path)
+			if m.IsZero() || m.Equal(last) {
+				continue
+			}
+			last = m
+			log.Info("config file changed, reloading", "path", path)
+			reload()
+		}
+	}
+}
+
+func fileModTime(path string) time.Time {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}
+	}
+	return fi.ModTime()
 }
 
 func runCA(args []string) error {

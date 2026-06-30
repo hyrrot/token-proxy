@@ -155,6 +155,20 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// NonReloadableChanges returns human-readable descriptions of fields that
+// differ between old and new but can only take effect on a restart (the listen
+// address and CA directory). It returns nil when a hot reload fully applies.
+func NonReloadableChanges(old, neu *Config) []string {
+	var changes []string
+	if old.Listen != neu.Listen {
+		changes = append(changes, fmt.Sprintf("listen %q -> %q", old.Listen, neu.Listen))
+	}
+	if old.CA.Dir != neu.CA.Dir {
+		changes = append(changes, fmt.Sprintf("ca.dir %q -> %q", old.CA.Dir, neu.CA.Dir))
+	}
+	return changes
+}
+
 // DefaultCADir returns the default CA directory under the user's config dir.
 func DefaultCADir() string {
 	if dir, err := os.UserConfigDir(); err == nil {
