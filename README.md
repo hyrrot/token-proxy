@@ -242,6 +242,12 @@ git push origin v0.1.0
 
 Initial release. Development-only by design.
 
+## Contributing
+
+Contributions are welcome via fork & pull request — see
+[CONTRIBUTING.md](./CONTRIBUTING.md). `main` is protected, so all changes land
+through PRs that pass CI.
+
 ## License
 
 [MIT](./LICENSE) © hyrrot

@@ -1,0 +1,7 @@
+# Code owners for token-proxy.
+# These owners are requested for review automatically on pull requests that
+# touch matching paths. See:
+# https://docs.github.com/articles/about-code-owners
+
+# Default owner for everything in the repository.
+*       @hyrrot
