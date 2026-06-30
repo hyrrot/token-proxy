@@ -241,3 +241,7 @@ git push origin v0.1.0
 ## Status
 
 Initial release. Development-only by design.
+
+## License
+
+[MIT](./LICENSE) © hyrrot
