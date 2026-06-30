@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Keep GitHub Actions pinned-by-SHA references up to date. Dependabot updates
+  # the SHA and the trailing version comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Go module dependencies.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go-dependencies:
+        patterns: ["*"]
