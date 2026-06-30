@@ -50,7 +50,7 @@ jobs:
 
           pkg="token-proxy_${VERSION}_${GOOS}_${GOARCH}"
           mkdir "$pkg"
-          cp "${bin}${ext}" README.md token-proxy.example.yaml "$pkg"/
+          cp "${bin}${ext}" README.md LICENSE token-proxy.example.yaml "$pkg"/
           mkdir -p dist
           if [ "$GOOS" = "windows" ]; then
             zip -r "dist/${pkg}.zip" "$pkg"
