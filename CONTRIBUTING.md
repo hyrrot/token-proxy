@@ -7,6 +7,9 @@ token-proxy is a **development-only** tool that injects real API credentials, so
 contributions are reviewed with security in mind — please read the
 [Security expectations](#security-expectations) below.
 
+By participating, you agree to abide by our
+[Code of Conduct](./CODE_OF_CONDUCT.md).
+
 ## Proposing changes
 
 The `main` branch is protected: nobody (including the maintainer) pushes to it
