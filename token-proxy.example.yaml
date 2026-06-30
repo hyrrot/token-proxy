@@ -1,0 +1,54 @@
+# token-proxy example configuration.
+# Copy to token-proxy.yaml and edit. See README.md for details.
+
+# Address to bind. Development-only: must be a loopback address unless you
+# start with --allow-public.
+listen: "127.0.0.1:8080"
+
+ca:
+  # Where the internal CA (ca-cert.pem / ca-key.pem) is stored/created.
+  # Defaults to <user-config-dir>/token-proxy. "~" is expanded.
+  dir: "~/.config/token-proxy"
+
+cache:
+  # How long a resolved secret is served before it is revalidated against its
+  # source. Defaults to 5m.
+  ttl: "5m"
+
+# Rules are evaluated top to bottom; the first rule whose host matches wins.
+# Host patterns: "*" matches exactly one label (api.github.com, *.github.com).
+#
+# Header values are Go text/template strings with these functions:
+#   secret "<ref>"   resolve a secret reference (see schemes below)
+#   base64 <s>       standard base64-encode
+#   trim <s>         strip surrounding whitespace
+#   env "<NAME>"     read an environment variable
+#
+# Secret reference schemes:
+#   op://<vault>/<item>/<field>          1Password CLI (`op`)
+#   gsm://<project>/<secret>             Google Secret Manager, "latest" version
+#   gsm://<project>/<secret>/<version>   Google Secret Manager, pinned version
+rules:
+  - name: github
+    match:
+      hosts: ["api.github.com", "*.github.com"]
+    inject:
+      headers:
+        - name: Authorization
+          value: 'Bearer {{ secret "op://Personal/github-token/credential" }}'
+
+  - name: openai
+    match:
+      hosts: ["api.openai.com"]
+    inject:
+      headers:
+        - name: Authorization
+          value: 'Bearer {{ secret "gsm://my-gcp-project/openai-api-key" }}'
+
+  - name: example-basic-auth
+    match:
+      hosts: ["api.example.com"]
+    inject:
+      headers:
+        - name: Authorization
+          value: 'Basic {{ printf "%s:%s" (secret "op://Personal/example/username") (secret "op://Personal/example/password") | base64 }}'

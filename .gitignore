@@ -1,0 +1,8 @@
+# Compiled binary
+/token-proxy
+
+# Local user config and CA material (never commit secrets or keys)
+/token-proxy.yaml
+*.pem
+ca-cert.pem
+ca-key.pem
