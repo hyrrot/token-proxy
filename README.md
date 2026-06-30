@@ -43,10 +43,24 @@ the boundary: the agent can *use* the API but can never *read* the token.
 
 ## Install / build
 
+### Prebuilt binaries
+
+Download an archive for your platform from the
+[Releases](https://github.com/hyrrot/token-proxy/releases) page, verify it
+against `SHA256SUMS`, and extract:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+tar -xzf token-proxy_*_<os>_<arch>.tar.gz   # or unzip on Windows
+```
+
+### From source
+
 Requires Go 1.25+.
 
 ```sh
 go build -o token-proxy ./cmd/token-proxy
+./token-proxy version
 ```
 
 ## Quick start
@@ -203,6 +217,19 @@ Package layout:
 - `internal/ca` — internal CA, on-the-fly leaf certificates
 - `internal/secrets` — `Source` interface, caching `Resolver`, 1Password & GSM
 - `internal/proxy` — the forwarding/MITM proxy and header injection
+
+### Releasing
+
+Pushing a `v*` tag triggers the release workflow, which cross-compiles all
+platforms, packages each as a `.tar.gz`/`.zip` (binary + README + example
+config), generates `SHA256SUMS`, and publishes a GitHub Release with
+auto-generated notes. The tag name is baked into the binary (`token-proxy
+version`). Tags containing `-` (e.g. `v1.2.0-rc1`) are marked as pre-releases.
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ## Status
 

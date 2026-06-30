@@ -21,6 +21,10 @@ import (
 	"github.com/hyrrot/token-proxy/internal/secrets"
 )
 
+// version is the build version, overridden at release time via
+// -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -32,6 +36,9 @@ func main() {
 		err = runServe(os.Args[2:])
 	case "ca":
 		err = runCA(os.Args[2:])
+	case "version", "--version", "-v":
+		fmt.Println("token-proxy", version)
+		return
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -52,6 +59,7 @@ func usage() {
 Usage:
   token-proxy serve [flags]   Start the proxy
   token-proxy ca   [flags]    Show the internal CA path and trust instructions
+  token-proxy version         Print the version
 
 Run "token-proxy serve -h" or "token-proxy ca -h" for flags.
 `)
@@ -118,6 +126,7 @@ func runServe(args []string) error {
 	}
 
 	log.Info("token-proxy listening",
+		"version", version,
 		"addr", ln.Addr().String(),
 		"ca", authority.CertPath(),
 		"rules", len(cfg.Rules))
