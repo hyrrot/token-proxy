@@ -226,6 +226,13 @@ config), generates `SHA256SUMS`, and publishes a GitHub Release with
 auto-generated notes. The tag name is baked into the binary (`token-proxy
 version`). Tags containing `-` (e.g. `v1.2.0-rc1`) are marked as pre-releases.
 
+The easiest way to cut a release is the **Bump version** workflow
+(Actions → *Bump version* → *Run workflow*): pick `patch`, `minor`, or `major`
+and it computes the next version from the latest `v*` tag, pushes the tag, and
+launches the release. An optional pre-release suffix (e.g. `rc1`) is supported.
+
+To release manually instead:
+
 ```sh
 git tag v0.1.0
 git push origin v0.1.0

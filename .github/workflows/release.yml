@@ -3,6 +3,10 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Also runnable explicitly (e.g. by the Bump version workflow, which pushes a
+  # tag with GITHUB_TOKEN — such pushes do not fire the tag trigger). Dispatch
+  # with --ref <tag> so github.ref_name is the version.
+  workflow_dispatch:
 
 permissions:
   contents: write
