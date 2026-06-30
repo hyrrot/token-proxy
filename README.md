@@ -248,6 +248,9 @@ Contributions are welcome via fork & pull request — see
 [CONTRIBUTING.md](./CONTRIBUTING.md). `main` is protected, so all changes land
 through PRs that pass CI.
 
+Found a security issue? Please report it privately — see
+[SECURITY.md](./SECURITY.md).
+
 ## License
 
 [MIT](./LICENSE) © hyrrot

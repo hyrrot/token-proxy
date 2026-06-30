@@ -1,0 +1,73 @@
+name: Bug report
+description: Report something that isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! For **security vulnerabilities**, please use a
+        private [security advisory](https://github.com/hyrrot/token-proxy/security/advisories/new)
+        instead of a public issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and its impact.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce it?
+      placeholder: |
+        1. Config rule for '...'
+        2. Run `token-proxy serve ...`
+        3. `curl --proxy ... https://...`
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `token-proxy version`.
+      placeholder: token-proxy v0.1.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / architecture
+      placeholder: macOS 15 arm64 / Ubuntu 24.04 amd64
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config
+      description: The relevant part of your config. **Redact all secrets and secret references.**
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant proxy logs (run with `--verbose` if useful). **Redact any sensitive values.**
+      render: shell
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: This is not a security vulnerability (those go to a private advisory).
+          required: true
+        - label: I removed any real secrets, tokens, or CA keys from this report.
+          required: true
+        - label: I reproduced this on the latest release.
+          required: true
