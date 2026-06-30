@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -13,7 +14,7 @@ import (
 // Resolver caches resolved secrets and revalidates them lazily to minimise
 // calls to the underlying sources. It is safe for concurrent use.
 type Resolver struct {
-	ttl time.Duration
+	ttl atomic.Int64 // revalidation interval, in nanoseconds
 	now func() time.Time
 
 	mu      sync.RWMutex
@@ -33,13 +34,20 @@ type entry struct {
 // NewResolver creates a resolver whose cached entries are revalidated after
 // ttl has elapsed.
 func NewResolver(ttl time.Duration) *Resolver {
-	return &Resolver{
-		ttl:     ttl,
+	r := &Resolver{
 		now:     time.Now,
 		sources: map[string]Source{},
 		cache:   map[string]*entry{},
 	}
+	r.ttl.Store(int64(ttl))
+	return r
 }
+
+// SetTTL updates the revalidation interval for subsequent lookups. Existing
+// cache entries are kept; the new TTL is measured from their last check.
+func (r *Resolver) SetTTL(ttl time.Duration) { r.ttl.Store(int64(ttl)) }
+
+func (r *Resolver) currentTTL() time.Duration { return time.Duration(r.ttl.Load()) }
 
 // Register adds a source. It panics if two sources share a scheme.
 func (r *Resolver) Register(s Source) {
@@ -67,7 +75,7 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) (string, error) {
 	}
 
 	// Fast path: a fresh or immutable cache entry needs no source contact.
-	if e != nil && (e.immutable || r.now().Sub(e.checkedAt) < r.ttl) {
+	if e != nil && (e.immutable || r.now().Sub(e.checkedAt) < r.currentTTL()) {
 		return e.value, nil
 	}
 
@@ -87,7 +95,7 @@ func (r *Resolver) refresh(ctx context.Context, src Source, ref string) (string,
 	r.mu.RUnlock()
 
 	if cached != nil {
-		if cached.immutable || r.now().Sub(cached.checkedAt) < r.ttl {
+		if cached.immutable || r.now().Sub(cached.checkedAt) < r.currentTTL() {
 			return cached.value, nil
 		}
 		// TTL expired: try a cheap version check before a (billed) fetch.

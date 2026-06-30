@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hyrrot/token-proxy/internal/ca"
@@ -24,11 +25,19 @@ import (
 	"github.com/hyrrot/token-proxy/internal/secrets"
 )
 
+// snapshot is the hot-swappable part of the proxy's configuration. It is
+// replaced atomically on reload; the rules and the injector built from them
+// always belong to the same generation.
+type snapshot struct {
+	cfg *config.Config
+	inj *injector
+}
+
 // Proxy is an http.Handler implementing the forward proxy.
 type Proxy struct {
-	cfg       *config.Config
+	current   atomic.Pointer[snapshot]
 	ca        *ca.CA
-	injector  *injector
+	resolver  *secrets.Resolver
 	transport *http.Transport
 	log       *slog.Logger
 }
@@ -39,10 +48,9 @@ func New(cfg *config.Config, authority *ca.CA, resolver *secrets.Resolver, log *
 	if err != nil {
 		return nil, err
 	}
-	return &Proxy{
-		cfg:      cfg,
+	p := &Proxy{
 		ca:       authority,
-		injector: inj,
+		resolver: resolver,
 		transport: &http.Transport{
 			Proxy:                 nil, // never chain to an outer proxy
 			ForceAttemptHTTP2:     true,
@@ -52,8 +60,28 @@ func New(cfg *config.Config, authority *ca.CA, resolver *secrets.Resolver, log *
 			ExpectContinueTimeout: time.Second,
 		},
 		log: log,
-	}, nil
+	}
+	p.current.Store(&snapshot{cfg: cfg, inj: inj})
+	return p, nil
 }
+
+// Reload atomically swaps in a new configuration. The new config is fully
+// validated and its injector compiled before the swap, so a bad config leaves
+// the running proxy untouched and the error is returned to the caller.
+//
+// Only rules and header injection are reloaded; the listen address and CA
+// directory are fixed for the process lifetime. The secret cache is preserved
+// across reloads.
+func (p *Proxy) Reload(cfg *config.Config) error {
+	inj, err := newInjector(cfg, p.resolver)
+	if err != nil {
+		return err
+	}
+	p.current.Store(&snapshot{cfg: cfg, inj: inj})
+	return nil
+}
+
+func (p *Proxy) snap() *snapshot { return p.current.Load() }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodConnect {
@@ -74,9 +102,10 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	outReq.RequestURI = ""
 	removeHopHeaders(outReq.Header)
 
-	rule := p.cfg.Find(host)
+	snap := p.snap()
+	rule := snap.cfg.Find(host)
 	if rule != nil {
-		if err := p.injector.apply(outReq, rule.Name); err != nil {
+		if err := snap.inj.apply(outReq, rule.Name); err != nil {
 			p.log.Error("inject failed", "host", host, "rule", rule.Name, "err", err)
 			http.Error(w, "token-proxy: credential injection failed: "+err.Error(), http.StatusBadGateway)
 			return
@@ -108,8 +137,11 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rule := p.cfg.Find(host)
-	if rule == nil {
+	// Decide MITM vs. blind tunnel from the current config. This decision is
+	// fixed for the life of the tunnel (an established blind tunnel cannot be
+	// decrypted later, nor vice versa); per-request rule changes within a MITM
+	// connection are picked up in mitm's loop.
+	if p.snap().cfg.Find(host) == nil {
 		p.logRequest("tunnel", "CONNECT", host, "", nil)
 		p.tunnel(clientConn, hostport)
 		return
@@ -118,12 +150,12 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		clientConn.Close()
 		return
 	}
-	p.mitm(clientConn, hostport, host, rule)
+	p.mitm(clientConn, hostport, host)
 }
 
 // mitm terminates TLS towards the client and forwards decrypted requests
 // upstream with credentials injected.
-func (p *Proxy) mitm(clientConn net.Conn, hostport, host string, rule *config.Rule) {
+func (p *Proxy) mitm(clientConn net.Conn, hostport, host string) {
 	defer clientConn.Close()
 
 	tlsConn := tls.Server(clientConn, p.ca.ServerConfigForHost(host))
@@ -148,10 +180,16 @@ func (p *Proxy) mitm(clientConn net.Conn, hostport, host string, rule *config.Ru
 		req.RequestURI = ""
 		removeHopHeaders(req.Header)
 
-		if err := p.injector.apply(req, rule.Name); err != nil {
-			p.log.Error("inject failed", "host", host, "rule", rule.Name, "err", err)
-			writeStatus(tlsConn, http.StatusBadGateway, "token-proxy: credential injection failed: "+err.Error())
-			return
+		// Re-evaluate against the current config each request so a hot reload
+		// takes effect on the next request of a kept-alive connection.
+		snap := p.snap()
+		rule := snap.cfg.Find(host)
+		if rule != nil {
+			if err := snap.inj.apply(req, rule.Name); err != nil {
+				p.log.Error("inject failed", "host", host, "rule", rule.Name, "err", err)
+				writeStatus(tlsConn, http.StatusBadGateway, "token-proxy: credential injection failed: "+err.Error())
+				return
+			}
 		}
 		p.logRequest("https", req.Method, host, req.URL.Path, rule)
 
